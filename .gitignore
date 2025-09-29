@@ -1,0 +1,13 @@
+# Executable file
+kavin
+
+# Object files directory
+obj/
+
+# macOS specific files
+.DS_Store
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+*.swp
