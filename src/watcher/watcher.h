@@ -21,16 +21,19 @@ typedef enum {
 
 typedef struct {
     const char *cmd;
-    const char *file_to_watch;
+    char **files_to_watch;
+    char **dirs_to_watch;
+    int file_count;
+    int dir_count;
+    time_t *last_mtimes;
     pid_t process_id;
-    time_t last_mtime;
     volatile sig_atomic_t running;
     WatcherState state;
     struct timespec shutdown_start_time;
     unsigned long restart_count;
 } Watcher;
 
-void watcher_init(Watcher *watcher, const char *cmd, const char *file);
+void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_count);
 void watcher_run(Watcher *watcher, volatile sig_atomic_t *running_flag);
 
 #endif // WATCHER_H

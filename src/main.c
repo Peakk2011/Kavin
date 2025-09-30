@@ -19,20 +19,22 @@ static void signal_handler(int signum) {
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <command> <file_to_watch>\n", argv[0]);
-        fprintf(stderr, "Example: %s \"npm start\" src/main.js\n", argv[0]);
+        fprintf(stderr, "Usage: %s <command> <file1> [file2] ...\n", argv[0]);
+        fprintf(stderr, "Example: %s \"npm start\" src/main.js src/utils.js\n", argv[0]);
         return 1;
     }
 
-    // Setup signal handlers to gracefully terminate.
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
     Watcher watcher;
-    watcher_init(&watcher, argv[1], argv[2]);
+    // Pass the command.
+    watcher_init(&watcher, argv[1], &argv[2], argc - 2);
 
-    // The main logic is now encapsulated in watcher_run.
-    // We pass the global running flag to it.
+    /*
+        The main logic is now encapsulated in watcher_run.
+        We pass the global running flag to it.
+    */
     watcher_run(&watcher, &g_running);
 
     // Cleanup message
@@ -42,9 +44,12 @@ int main(int argc, char *argv[]) {
 }
 
 /*
+
     To compile all components together:
     gcc -O3 -march=native -flto -o kavin src/main.c src/watcher/watcher.c src/watcher/watcher_actions.c src/process/process.c -Isrc
 
-    Usage: ./kavin <command> <file_to_watch>
+    Usage: ./kavin <command> <file1> <file2> <file3> ...
     Example: ./kavin "npm start" src/main.js
+    Or use many of file examole: ./kavin "npm start" src/main.js src/index.js ... rest of the file
+
 */
