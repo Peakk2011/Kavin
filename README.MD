@@ -2,6 +2,13 @@
 
 The generic Node.js process watcher written in C and Assembly
 
+## Quick Install
+```bash
+git clone https://github.com/Peakk2011/Kavin.git
+cd Kavin
+make
+```
+
 It's a better alternative for viewing files that works like nodemon and has some nice differences.
 
 ## Why Kavin over nodemon?
