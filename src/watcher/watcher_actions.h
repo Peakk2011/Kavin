@@ -1,6 +1,7 @@
 /*
     Copyright © 2025 Mint teams
     watcher_actions.h
+    The generic Node.js process watcher
 */
 
 #ifndef WATCHER_ACTIONS_H

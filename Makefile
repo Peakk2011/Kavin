@@ -1,56 +1,68 @@
-# Makefile for Kavin project
+# Copyright © 2025 Mint teams
+# Makefile for Kavin
 
-# Configuration
-# C Compiler
+# Platform settings
+UNAME_S := $(shell uname -s)
+TARGET_NAME = kavin
+TARGET_EXT =
+ASM_DEFINES =
+
+ifeq ($(UNAME_S),Linux)
+	AFLAGS = -f elf64
+	ASM_DEFINES = -DSTAT_SYSCALL=4 -DKILL_SYSCALL=62
+else ifeq ($(UNAME_S),Darwin)
+	AFLAGS = -f macho64
+	ASM_DEFINES = -DSTAT_SYSCALL=0x2000188 -DKILL_SYSCALL=0x2000025
+else ifneq ($(findstring MINGW,$(UNAME_S)),) # For MSYS2/MinGW on Windows
+	TARGET_EXT = .exe
+	AFLAGS = -f win64
+	ASM_DEFINES = -DSTAT_SYSCALL=5 # Note: Direct syscalls on Windows are complex.
+endif
+
+# Compilers and Assembler
 CC = gcc
+ASM = nasm
 
-# Compiler flags:
-# -O3: Optimization level 3
-# -march=native: Optimize for the host architecture
-# -flto: Link-time optimization
-# -Isrc: Add 'src' directory to the include search path
-CFLAGS = -O3 -march=native -flto -Isrc
+# Directories
+SRC_DIR = src
+OBJ_DIR = obj
+DIST_DIR = dist
 
-# Linker flags (none needed for this project currently)
-LDFLAGS =
+# Source files
+C_SRCS := $(wildcard $(SRC_DIR)/*/*.c) $(wildcard $(SRC_DIR)/*.c)
+ASM_SRCS := $(wildcard $(SRC_DIR)/*/*.asm)
 
-# Project directories
-SRCDIR = src
-OBJDIR = obj
+# Object files
+OBJS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(C_SRCS))
+OBJS += $(patsubst $(SRC_DIR)/%.asm,$(OBJ_DIR)/%.o,$(ASM_SRCS))
 
-# Executable name
-TARGET = kavin
+# Target executable
+TARGET = $(DIST_DIR)/$(TARGET_NAME)$(TARGET_EXT)
 
-# --- Source and Object File Generation ---
-# Find all .c files in the source directory and its subdirectories
-SOURCES := $(shell find $(SRCDIR) -name "*.c")
+# Flags
+CFLAGS = -O3 -march=native -flto -Wall -Wextra -I$(SRC_DIR)
+LDFLAGS = -flto
 
-# Generate corresponding object file paths in the object directory
-OBJECTS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))
+# Rules
 
-# --- Build Rules ---
 .PHONY: all clean
 
 all: $(TARGET)
 
-$(TARGET): $(OBJECTS)
-	@echo "Linking $(TARGET)..."
-	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
+$(TARGET): $(OBJS)
+	@mkdir -p $(DIST_DIR)
+	@echo "LD  $@"
+	@$(CC) $(LDFLAGS) -o $@ $^ # $^ represents all prerequisites (.o files)
 
-# Pattern rule to compile each .c file into a .o file
-# $(OBJDIR)/%.o: $(SRCDIR)/%.c
-# 	@mkdir -p $(@D) # Create the subdirectory in obj/ if it doesn't exist
-# 	@echo "Compiling $<..."
-# 	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(@D)
+	@echo "CC  $<"
+	@$(CC) $(CFLAGS) -c -o $@ $<
 
-# Rule to compile C source files into object files
-$(OBJDIR)/%.o: $(SRCDIR)/%.c
-	@mkdir -p $(dir $@) # Ensure the output directory exists
-	@echo "Compiling $<"
-	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.asm
+	@mkdir -p $(@D)
+	@echo "ASM $<"
+	@$(ASM) $(AFLAGS) $(ASM_DEFINES) -o $@ $<
 
-# Clean rule: remove generated executable and object files
 clean:
-	@echo "Cleaning up build artifacts..."
-	@rm -f $(TARGET)
-	@rm -rf $(OBJDIR)
+	@rm -rf $(DIST_DIR) $(OBJ_DIR)

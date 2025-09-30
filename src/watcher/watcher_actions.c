@@ -1,6 +1,7 @@
 /*
     Copyright © 2025 Mint teams
     watcher_actions.c
+    The generic Node.js process watcher
 */
 
 #include "watcher_actions.h"
@@ -13,8 +14,7 @@
 #include <unistd.h>
 #include <dirent.h>
 
-static time_t get_mtime(const char *filepath);
-static void rescan_directories(Watcher *watcher);
+#include <arch/syscalls.h>
 
 static void add_watched_file(Watcher *watcher, const char *filepath) {
     // Check if file is already watched
@@ -24,7 +24,7 @@ static void add_watched_file(Watcher *watcher, const char *filepath) {
         }
     }
 
-    // Expand arrays if you needed
+    // Expand arrays if needed
     int new_count = watcher->file_count + 1;
     char **new_files = realloc(watcher->files_to_watch, sizeof(char *) * new_count);
     time_t *new_mtimes = realloc(watcher->last_mtimes, sizeof(time_t) * new_count);
@@ -43,7 +43,7 @@ static void add_watched_file(Watcher *watcher, const char *filepath) {
         return;
     }
     
-    watcher->last_mtimes[watcher->file_count] = get_mtime(filepath);
+    watcher->last_mtimes[watcher->file_count] = get_mtime_asm(filepath);
     watcher->file_count = new_count;
 
     printf("[Watcher info] Now watching new file: %s\n", filepath);
@@ -72,16 +72,16 @@ static void rescan_directories(Watcher *watcher) {
     }
 }
 
-static int check_for_file_changes(Watcher *watcher) {
+int check_for_file_changes(Watcher *watcher) {
     // Rescan directories for new files.
     rescan_directories(watcher);
 
     for (int i = 0; i < watcher->file_count; ++i) {
-        time_t current_mtime = get_mtime(watcher->files_to_watch[i]);
+        time_t current_mtime = get_mtime_asm(watcher->files_to_watch[i]);
         if (current_mtime != watcher->last_mtimes[i] && watcher->last_mtimes[i] != 0) {
             printf("[Watcher info] Change detected in %s! Restarting...\n", watcher->files_to_watch[i]);
             for (int j = 0; j < watcher->file_count; ++j) {
-                watcher->last_mtimes[j] = get_mtime(watcher->files_to_watch[j]);
+                watcher->last_mtimes[j] = get_mtime_asm(watcher->files_to_watch[j]);
             }
             return 1; // Change detected
         }
@@ -94,12 +94,7 @@ static int check_for_file_changes(Watcher *watcher) {
     return 0;
 }
 
-static time_t get_mtime(const char *filepath) {
-    struct stat st;
-    return (stat(filepath, &st) == 0) ? st.st_mtime : 0;
-}
-
-static void watcher_restart(Watcher *watcher) {
+void watcher_restart(Watcher *watcher) {
     printf("[Watcher info] Starting application\n");
     watcher->process_id = process_start(watcher->cmd);
     

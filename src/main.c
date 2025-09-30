@@ -14,10 +14,12 @@
 static volatile sig_atomic_t g_running = 1;
 
 static void signal_handler(int signum) {
+    (void)signum;
     g_running = 0;
 }
 
 int main(int argc, char *argv[]) {
+    
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <command> <file1> [file2] ...\n", argv[0]);
         fprintf(stderr, "Example: %s \"npm start\" src/main.js src/utils.js\n", argv[0]);
@@ -26,6 +28,9 @@ int main(int argc, char *argv[]) {
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+
+    // Clear the console screen while run
+    printf("\033[2J\033[H");
 
     Watcher watcher;
     // Pass the command.

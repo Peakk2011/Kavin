@@ -1,6 +1,7 @@
 /*
     Copyright © 2025 Mint teams
     process.h
+    The generic Node.js process watcher
 */
 
 #ifndef PROCESS_H

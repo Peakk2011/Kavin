@@ -1,38 +1,39 @@
 /*
     Copyright © 2025 Mint teams
     process.c
+    The generic Node.js process watcher
 */
 
-#include <process/process.h>
-#include <unistd.h>
-#include <stdlib.h>
+#include "process.h"
+#include <arch/syscalls.h>
 #include <stdio.h>
-#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 pid_t process_start(const char *command) {
     pid_t pid = fork();
-
-    if (pid == 0) {
+    if (pid == -1) {
+        perror("fork failed");
+        return -1;
+    } else if (pid == 0) {
+        // Child process
         setpgid(0, 0);
         execl("/bin/sh", "sh", "-c", command, (char *)NULL);
-        perror("execl failed");
+        perror("execl failed"); // execl only returns on error
         exit(127);
     }
-    // Parent or error. The caller should check if pid > 0.
+    // Parent process
     return pid;
 }
 
 void process_stop(pid_t pid) {
-    if (pid > 0) {
-        kill(-pid, SIGTERM); // Send signal to the entire process group
-    }
+    process_stop_asm(pid);
 }
 
 void process_kill(pid_t pid) {
-    if (pid > 0) {
-        kill(-pid, SIGKILL); // Send signal to the entire process group
-    }
+    kill(-pid, SIGKILL); // We can convert this to assembly next
 }
 
 int process_check_status(pid_t pid, int *status) {

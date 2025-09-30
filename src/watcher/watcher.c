@@ -1,6 +1,7 @@
 /*
     Copyright © 2025 Mint teams
     watcher.c
+    The generic Node.js process watcher
 */
 
 #include <stdio.h>
@@ -12,13 +13,9 @@
 
 #include <watcher/watcher.h>
 #include <watcher/watcher_actions.h>
+#include <arch/syscalls.h>
 
 const useconds_t FILE_INTERVAL = 100000; // 0.1s
-
-static time_t get_mtime(const char *filepath) {
-    struct stat st;
-    return (stat(filepath, &st) == 0) ? st.st_mtime : 0;
-}
 
 void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_count) {
     watcher->cmd = cmd;
@@ -67,7 +64,7 @@ void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_coun
 void watcher_run(Watcher *watcher, volatile sig_atomic_t *running_flag) {
     // Initial check and population of modification times
     for (int i = 0; i < watcher->file_count; ++i) {
-        watcher->last_mtimes[i] = get_mtime(watcher->files_to_watch[i]);
+        watcher->last_mtimes[i] = get_mtime_asm(watcher->files_to_watch[i]);
         printf("[Watcher info] Watching: %s\n", watcher->files_to_watch[i]);
     }
     for (int i = 0; i < watcher->dir_count; ++i) {
