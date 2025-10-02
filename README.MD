@@ -1,4 +1,4 @@
-![Kavin Logo](https://drive.google.com/uc?export=view&id=1DInnye_cQZOvJ7yRy1Ge_BdD0QrXIByh)
+<img src="https://drive.google.com/uc?export=view&id=1DInnye_cQZOvJ7yRy1Ge_BdD0QrXIByh" width="200" />
 
 # Kavin
 
