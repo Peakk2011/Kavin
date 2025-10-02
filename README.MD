@@ -1,3 +1,5 @@
+<img src="./assets/Logo.png" width="200" />
+
 # Kavin
 
 The generic Node.js process watcher written in C and Assembly
