@@ -69,6 +69,12 @@ REM # Link object files
 echo Linking %TARGET_NAME%%TARGET_EXT%...
 %CC% -o "%DIST_DIR%\%TARGET_NAME%%TARGET_EXT%" %OBJ_FILES% %LDFLAGS%
 
+REM # Copy assets
+echo Copying assets...
+if exist "assets" (
+    xcopy "assets" "%DIST_DIR%\assets\" /E /I /Y /Q
+)
+
 echo.
 echo Build finished: %DIST_DIR%\%TARGET_NAME%%TARGET_EXT%
 endlocal

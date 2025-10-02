@@ -82,8 +82,8 @@ class HMR {
         this.preserveState();
 
         // For now, reload for JS changes (can be improved)
-        console.log(`⚡ JS file changed: ${filename}`);
-        this.showStatus(`⚡ JS Updated: ${filename}`, 'warning');
+        console.log(`JS file changed: ${filename}`);
+        this.showStatus(`JS Updated: ${filename}`, 'warning');
         setTimeout(() => this.fullReload(), 500);
     }
 

@@ -37,6 +37,11 @@ static volatile int server_running = 1;
 // Include the UI interface
 #include "interface/interface.h"
 
+// Function to signal the server to stop
+void stop_server() {
+    server_running = 0;
+}
+
 typedef struct {
     int argc;
     char** argv;
@@ -70,7 +75,7 @@ void add_ws_client(SOCKET client_socket) {
     ws_clients = new_client;
     
     LeaveCriticalSection(&ws_clients_lock);
-    LogWithColor("WebSocket client connected", RGB(0, 255, 128));
+    LogWithColor("WebSocket client connected", LOG_COLOR_SUCCESS);
 }
 
 void remove_ws_client(SOCKET client_socket) {
@@ -147,7 +152,7 @@ MemoryPool* init_memory(int initial_capacity) {
     memset(pool->blocks, 0, sizeof(void*) * initial_capacity);
     memset(pool->sizes, 0, sizeof(size_t) * initial_capacity);
     
-    LogWithColor("Memory pool initialized: %d slots", RGB(0, 200, 255), initial_capacity);
+    LogWithColor("Memory pool initialized: %d slots", LOG_COLOR_FUNCTION, initial_capacity);
     return pool;
 }
 
@@ -210,7 +215,7 @@ void serve_hmr_script(SOCKET client) {
 // Initialize critical section for WebSocket clients
 void init_hmr() {
     InitializeCriticalSection(&ws_clients_lock);
-    LogWithColor("HMR System initialized", RGB(255, 255, 0));
+    LogWithColor("HMR System initialized", LOG_COLOR_FUNCTION);
 }
 
 void cleanup_hmr() {
@@ -225,7 +230,7 @@ void cleanup_hmr() {
     }
     ws_clients = NULL;
     
-    LogWithColor("HMR System cleaned up", RGB(255, 165, 0));
+    LogWithColor("HMR System cleaned up", LOG_COLOR_WARNING);
 }
 
 // Enhanced reload endpoint with data
@@ -248,7 +253,7 @@ void serve_reload(SOCKET client) {
 }
 
 // Main server thread with WebSocket support
-unsigned __stdcall server_thread(void* pArguments) {
+unsigned __stdcall server_main_thread(void* pArguments) {
     // Mark pArguments as unused to suppress compiler warnings
     (void)pArguments;
     
@@ -267,7 +272,7 @@ unsigned __stdcall server_thread(void* pArguments) {
     if (__argc > 1) {
         port = (unsigned short)atoi(__argv[1]);
         if (port == 0) {
-            LogWithColor("Invalid port '%s', using 3000", RGB(255, 165, 0), __argv[1]);
+            LogWithColor("Invalid port '%s', using 3000", LOG_COLOR_WARNING, __argv[1]);
             port = 3000;
         }
     }
@@ -278,7 +283,7 @@ unsigned __stdcall server_thread(void* pArguments) {
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) == SOCKET_ERROR) {
-        LogWithColor("Bind failed: %d", RGB(255, 0, 0), WSAGetLastError());
+        LogWithColor("Bind failed: %d", LOG_COLOR_ERROR, WSAGetLastError());
         cleanup_filesystem();
         cleanup_hmr();
         return 1;
@@ -286,9 +291,9 @@ unsigned __stdcall server_thread(void* pArguments) {
 
     listen(server, 10);
 
-    LogWithColor("LiveServer Ready", RGB(0, 255, 0));
-    LogWithColor("Local: http://localhost:%d", RGB(0, 200, 255), port);
-    LogWithColor("Watching HTML , CSS , JS files...", RGB(255, 255, 0));
+    LogWithColor("LiveServer Ready", LOG_COLOR_SUCCESS);
+    LogWithColor("Local: http://localhost:%d", LOG_COLOR_VARIABLE, port);
+    LogWithColor("Watching HTML, CSS, JS files...", LOG_COLOR_FUNCTION);
 
     char url[256];
     snprintf(url, sizeof(url), "http://localhost:%d", port);
@@ -332,7 +337,7 @@ unsigned __stdcall server_thread(void* pArguments) {
                         
                         send(client, websocket_response, (int)strlen(websocket_response), 0);
                         add_ws_client(client);
-                        LogWithColor("WebSocket connection established", RGB(0, 255, 128));
+                        LogWithColor("WebSocket connection established", LOG_COLOR_SUCCESS);
 
                         tracked_free(buffer);
                         continue; // Don't close the socket, keep it for WebSocket
@@ -348,12 +353,12 @@ unsigned __stdcall server_thread(void* pArguments) {
             if (strcmp(path, "/reload") == 0) {
                 check_file_changes();
                 serve_reload(client);
-                LogWithColor("[%s] %s [Hot Reload System]", RGB(0, 255, 128), method, path);
+                LogWithColor("[%s] %s [Hot Reload System]", LOG_COLOR_SUCCESS, method, path);
             } 
             else if (strcmp(path, "/live-reload.js") == 0) {
                 // No need to check for file changes when serving the script itself
                 serve_hmr_script(client);
-                LogWithColor("[%s] %s [HMR Script]", RGB(0, 255, 128), method, path);
+                LogWithColor("[%s] %s [HMR Script]", LOG_COLOR_SUCCESS, method, path);
             }
             else if (strncmp(path, "/api/", 5) == 0) {
                 char api_response[1024];
@@ -364,7 +369,7 @@ unsigned __stdcall server_thread(void* pArguments) {
                     "{\"status\":\"running\",\"smart_hmr\":true,\"files\":%d,\"memory\":%zu}",
                     0, memory_pool ? memory_pool->total_allocated : 0); // Files tracked is now internal
                 send(client, api_response, api_len, 0);
-                LogWithColor("[%s] %s [API]", RGB(0, 200, 255), method, path);
+                LogWithColor("[%s] %s [API]", LOG_COLOR_KEYWORD, method, path);
             }
             else {
                 char *file = path + 1;
@@ -379,7 +384,7 @@ unsigned __stdcall server_thread(void* pArguments) {
                     FILE *test_file = fopen(file, "r");
                     if (test_file) {
                         fclose(test_file);
-                        LogWithColor("[%s] %s [HTML]", RGB(0, 255, 128), method, path);
+                        LogWithColor("[%s] %s [HTML]", LOG_COLOR_STRING, method, path);
                         check_file_changes();
                         serve_html_with_hmr(client, file);
                     } else {
@@ -387,7 +392,7 @@ unsigned __stdcall server_thread(void* pArguments) {
                     }
                 }
                 else if (ext && (strcmp(ext, ".css") == 0 || strcmp(ext, ".js") == 0)) {
-                    LogWithColor("[%s] %s [Tracked Asset]", RGB(0, 255, 255), method, path);
+                    LogWithColor("[%s] %s [Tracked Asset]", LOG_COLOR_TYPE, method, path);
                     check_file_changes();
                     serve_file(client, file);
                 }
@@ -398,7 +403,7 @@ unsigned __stdcall server_thread(void* pArguments) {
                     FILE *test_file = fopen(html_file, "r");
                     if (test_file) {
                         fclose(test_file);
-                        LogWithColor("[%s] %s [Auto .html]", RGB(0, 255, 128), method, path);
+                        LogWithColor("[%s] %s [Auto .html]", LOG_COLOR_STRING, method, path);
                         check_file_changes();
                         serve_html_with_hmr(client, html_file);
                     } else {
@@ -406,7 +411,7 @@ unsigned __stdcall server_thread(void* pArguments) {
                     }
                 }
                 else {
-                    LogWithColor("[%s] %s", RGB(0, 200, 255), method, path);
+                    LogWithColor("[%s] %s", LOG_COLOR_KEYWORD, method, path);
                     serve_file(client, file);
                 }
             }
@@ -424,11 +429,11 @@ unsigned __stdcall server_thread(void* pArguments) {
 }
 
 // Memory cleanup
-void cleanup_memory() {
+void cleanup_memory_pool() {
     if (!memory_pool) return;
     
-    LogWithColor("Memory cleanup started", RGB(255, 165, 0));
-    LogWithColor("Blocks: %d, Memory: %zu bytes", RGB(0, 200, 255), 
+    LogWithColor("Memory cleanup started", LOG_COLOR_WARNING);
+    LogWithColor("Blocks: %d, Memory: %zu bytes", LOG_COLOR_NUMBER, 
                  memory_pool->count, memory_pool->total_allocated);
 
     for (int i = 0; i < memory_pool->count; i++) {
@@ -440,7 +445,7 @@ void cleanup_memory() {
     free(memory_pool);
     memory_pool = NULL;
 
-    LogWithColor("Memory cleanup completed", RGB(0, 255, 0));
+    LogWithColor("Memory cleanup completed", LOG_COLOR_SUCCESS);
 }
 
 /*  
