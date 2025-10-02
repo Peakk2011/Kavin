@@ -5,8 +5,12 @@
 
 #include <stdio.h>
 #include <signal.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
 #include <sys/wait.h>
+#endif
 
 #include <watcher/watcher.h>
 

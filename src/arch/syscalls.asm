@@ -1,56 +1,58 @@
 ; Copyright © 2025 Mint teams
-; syscalls.asm
-; The generic Node.js process watcher
- 
+; syscalls.asm - x86-64 syscall wrappers
+
+section .data
+    ; stat struct buffer, size is 144 bytes on x86-64 Linux
+    stat_buf: times 144 db 0
+
 section .text
-    global _get_mtime_asm
-    
-    ; extern time_t get_mtime_asm(const char *filepath);
-    ; Input:
-    ;   rdi: const char* (pointer to filepath str)
-    ; Output:
-    ;   rax: time_t (modification time) or 0 on error
+    global get_mtime_asm
+    global process_stop_asm
 
-    _get_mtime_asm:
-        ; To the system V AMD64 ABI
-        sub rsp, 144
+; time_t get_mtime_asm(const char *filepath)
+; Returns the modification time of a file.
+; On error or if file not found, returns 0.
+; C ABI: RDI = filepath
+get_mtime_asm:
+    push    rbp
+    mov     rbp, rsp
 
-        ; Prepare args for the 'stat' system call
-        ; Syscall number 4 on x86-64 Linux.
-        ; int stat(const char *pathname, struct stat *statbuf);
-        mov rax, STAT_SYSCALL   ; This value is passed from the Makefile via -D
-        ; rdi already contains the first args
-        mov rsi, rsp
-        
-        ; Make the syscall
-        syscall
+    ; Syscall: stat(const char *pathname, struct stat *statbuf)
+    mov     rax, STAT_SYSCALL   ; Syscall number for stat (4 on x86-64)
+    ; RDI already contains the filepath (1st argument)
+    lea     rsi, [rel stat_buf] ; 2nd argument: pointer to stat_buf
+    syscall
 
-        ; The system call returns the result in rax reg
-        test rax, rax           ; Check if rax register is negative
-        js .error               ; If so, jump to error handler
+    ; Check for error (syscall returns negative on error)
+    test    rax, rax
+    js      .error
 
-        ; If successful, extract st_mtine.tv_sec from the stat struct
-        ; x86-64 Linux - the st_mtine field 
-        mov rax, [rsp + 88]     ; rax = st_mtine.tv_sec
+    ; Success: The modification time (st_mtime) is at offset 104 (0x68)
+    ; in the stat struct for x86-64. It's a 64-bit value (timespec.tv_sec).
+    mov     rax, [rel stat_buf + 104]
+    jmp     .done
 
-        ; Clean up the stack and return
-        add rsp, 144
-        ret
+.error:
+    xor     rax, rax            ; Return 0 on error
 
-    .error:
-        ; On error, will return 0
-        xor rax, rax           ; rax = 0
-        add rsp, 144           ; Clean up the stack
-        ret
+.done:
+    pop     rbp
+    ret
 
-    ; Process
-    global _process_stop_asm
+; void process_stop_asm(pid_t pid)
+; Sends SIGTERM (15) to the process group.
+; C ABI: RDI = pid
+process_stop_asm:
+    push    rbp
+    mov     rbp, rsp
 
-    _process_stop_asm:
-        ; syscall: kill(pid_t pid, int sig)
-        ; On macOS target the process group by passing a negative PID.
-        neg rdi                ; rdi = -rdi
-        mov rax, KILL_SYSCALL  ; This value is passed from the Makefile
-        mov rsi, 15            ; rsi = signal number for SIGTERM
-        syscall
-        ret
+    ; Syscall: kill(pid_t pid, int sig)
+    mov     rax, KILL_SYSCALL   ; Syscall number for kill (62 on x86-64)
+    ; RDI already contains the pid (1st argument)
+    neg     rdi                 ; Negate PID to target the whole process group
+    mov     rsi, 15             ; 2nd argument: signal number for SIGTERM
+    syscall
+
+    ; No return value needed (void function)
+    pop     rbp
+    ret

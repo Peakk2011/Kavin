@@ -11,7 +11,11 @@
 #include <sys/types.h>
 #include <time.h>
 
-extern const useconds_t FILE_INTERVAL;
+#ifdef _WIN32
+#include <windows.h> // For ULONGLONG and other Windows types
+#else
+#include <unistd.h> // For useconds_t
+#endif
 
 typedef enum {
     STATE_RUNNING,
@@ -30,7 +34,11 @@ typedef struct {
     pid_t process_id;
     volatile sig_atomic_t running;
     WatcherState state;
+#ifdef _WIN32
+    ULONGLONG shutdown_start_time;
+#else
     struct timespec shutdown_start_time;
+#endif
     unsigned long restart_count;
 } Watcher;
 

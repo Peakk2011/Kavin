@@ -7,15 +7,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#else
 #include <unistd.h>
 #include <sys/wait.h>
+#endif
 #include <sys/stat.h>
 
 #include <watcher/watcher.h>
 #include <watcher/watcher_actions.h>
 #include <arch/syscalls.h>
 
-const useconds_t FILE_INTERVAL = 100000; // 0.1s
+static const unsigned int FILE_INTERVAL_MS = 100; // 100ms
 
 void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_count) {
     watcher->cmd = cmd;
@@ -23,7 +29,7 @@ void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_coun
     watcher->dirs_to_watch = NULL;
     watcher->file_count = 0;
     watcher->dir_count = 0;
-    watcher->process_id = 0;
+    watcher->process_id = 0; // Using pid_t for cross-platform, but it's HANDLE on Windows
     watcher->running = 1;
     watcher->state = STATE_RESTARTING;
     watcher->restart_count = 0;
@@ -42,9 +48,9 @@ void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_coun
         struct stat st;
         if (stat(paths[i], &st) == 0) {
             if (S_ISDIR(st.st_mode)) {
-                watcher->dirs_to_watch[watcher->dir_count++] = paths[i];
+                watcher->dirs_to_watch[watcher->dir_count++] = strdup(paths[i]);
             } else if (S_ISREG(st.st_mode)) {
-                watcher->files_to_watch[watcher->file_count++] = paths[i];
+                watcher->files_to_watch[watcher->file_count++] = strdup(paths[i]);
             }
         } else {
             fprintf(stderr, "[Watcher warning] Path not found and will be ignored: %s\n", paths[i]);
@@ -93,23 +99,28 @@ void watcher_run(Watcher *watcher, volatile sig_atomic_t *running_flag) {
         }
 
         if (*running_flag) {
-            usleep(FILE_INTERVAL);
+            #ifdef _WIN32
+            Sleep(FILE_INTERVAL_MS);
+            #else
+            usleep(FILE_INTERVAL_MS * 1000);
+            #endif
         }
     }
 
     if (watcher->process_id > 0) {
-        printf("\n[Watcher info] Shutting down process (PID: %d)...\n", watcher->process_id);
+        printf("\n[Watcher info] Shutting down process (PID: %lld)...\n", (long long)watcher->process_id);
         watcher_initiate_shutdown(watcher);
+        #ifndef _WIN32
         waitpid(watcher->process_id, NULL, 0);
+        #endif
     }
 
     // Free allocated memory
     for (int i = 0; i < watcher->file_count; ++i) {
-        /*
-            Note: This assumes original paths from argv are not freed elsewhere
-            A solution would strdup all paths in init
-        */
         free(watcher->files_to_watch[i]);
+    }
+    for (int i = 0; i < watcher->dir_count; ++i) {
+        free(watcher->dirs_to_watch[i]);
     }
     free(watcher->files_to_watch);
     free(watcher->dirs_to_watch);

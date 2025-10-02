@@ -4,16 +4,24 @@
     The generic Node.js process watcher
 */
 
-#include "watcher_actions.h"
-#include "../process/process.h"
+// Standard library headers
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+// Platform-specific headers
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/wait.h>
 #include <unistd.h>
 #include <dirent.h>
+#endif
 
+// Project-specific headers
+#include "watcher_actions.h"
+#include "../process/process.h"
 #include <arch/syscalls.h>
 
 static void add_watched_file(Watcher *watcher, const char *filepath) {
@@ -50,6 +58,34 @@ static void add_watched_file(Watcher *watcher, const char *filepath) {
 }
 
 static void rescan_directories(Watcher *watcher) {
+    #ifdef _WIN32
+    for (int i = 0; i < watcher->dir_count; ++i) {
+        char search_path[1024];
+        snprintf(search_path, sizeof(search_path), "%s\\*.*", watcher->dirs_to_watch[i]);
+        
+        WIN32_FIND_DATA find_data;
+        HANDLE h_find = FindFirstFile(search_path, &find_data);
+
+        if (h_find == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+
+        do {
+            // Check if it's a file and not a directory
+            if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                /*
+                    This example doesn't filter by extension,
+                    But you could add `strstr(find_data.cFileName, ".js")` here.
+                */
+                char filepath[1024];
+                snprintf(filepath, sizeof(filepath), "%s\\%s", watcher->dirs_to_watch[i], find_data.cFileName);
+                add_watched_file(watcher, filepath);
+            }
+        } while (FindNextFile(h_find, &find_data) != 0);
+
+        FindClose(h_find);
+    }
+    #else
     for (int i = 0; i < watcher->dir_count; ++i) {
         DIR *d = opendir(watcher->dirs_to_watch[i]);
         if (!d) {
@@ -70,6 +106,7 @@ static void rescan_directories(Watcher *watcher) {
         }
         closedir(d);
     }
+    #endif
 }
 
 int check_for_file_changes(Watcher *watcher) {
@@ -99,7 +136,7 @@ void watcher_restart(Watcher *watcher) {
     watcher->process_id = process_start(watcher->cmd);
     
     if (watcher->process_id > 0) {
-        printf("[Watcher info] Started [PID: %d]\n", watcher->process_id);
+        printf("[Watcher info] Started [PID: %lld]\n", (long long)watcher->process_id);
     } else {
         fprintf(stderr, "[Watcher error] Failed to start process\n");
     }
@@ -108,7 +145,11 @@ void watcher_restart(Watcher *watcher) {
 void watcher_initiate_shutdown(Watcher *watcher) {
     if (watcher->process_id > 0) {
         process_stop(watcher->process_id);
+        #ifdef _WIN32
+        watcher->shutdown_start_time = GetTickCount64();
+        #else
         clock_gettime(CLOCK_MONOTONIC, &watcher->shutdown_start_time);
+        #endif
     }
 }
 
@@ -135,6 +176,14 @@ void handle_state_shutting_down(Watcher *watcher) {
     if (process_check_status(watcher->process_id, &status) == watcher->process_id) {
         watcher->state = STATE_RESTARTING;
     } else {
+        #ifdef _WIN32
+        ULONGLONG now = GetTickCount64();
+        if (now - watcher->shutdown_start_time >= 2000) { // 2 seconds
+            printf("[Watcher info] Process did not respond gracefully, sending kill signal...\n");
+            process_kill(watcher->process_id);
+            watcher->state = STATE_FORCE_KILLING;
+        }
+        #else
         struct timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
         if (now.tv_sec - watcher->shutdown_start_time.tv_sec >= 2) {
@@ -142,6 +191,7 @@ void handle_state_shutting_down(Watcher *watcher) {
             process_kill(watcher->process_id);
             watcher->state = STATE_FORCE_KILLING;
         }
+        #endif
     }
 }
 
@@ -157,11 +207,6 @@ void handle_state_force_killing(Watcher *watcher) {
 }
 
 void handle_state_restarting(Watcher *watcher) {
-    if (watcher->process_id > 0) {
-        waitpid(watcher->process_id, NULL, 0);
-        watcher->process_id = 0;
-    }
     watcher_restart(watcher);
-    if (watcher->process_id > 0) watcher->restart_count++;
     watcher->state = STATE_RUNNING;
 }
