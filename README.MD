@@ -1,4 +1,4 @@
-<img src="./assets/Logo.png" width="200" />
+<img src="./assets/Logo.png" width="150" />
 
 # Kavin
 
