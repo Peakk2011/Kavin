@@ -36,8 +36,10 @@ typedef struct {
     WatcherState state;
 #ifdef _WIN32
     ULONGLONG shutdown_start_time;
+    ULONGLONG last_dir_scan_time;
 #else
     struct timespec shutdown_start_time;
+    struct timespec last_dir_scan_time;
 #endif
     unsigned long restart_count;
 } Watcher;

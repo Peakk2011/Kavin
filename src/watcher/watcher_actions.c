@@ -24,8 +24,10 @@
 #include "../process/process.h"
 #include <arch/syscalls.h>
 
+static const unsigned int DIR_SCAN_INTERVAL_MS = 1000; // 1 second for directory rescans
+
 static void add_watched_file(Watcher *watcher, const char *filepath) {
-    // Check if file is already watched
+    // Check if file is already watched (using hash optimization could be better for many files)
     for (int i = 0; i < watcher->file_count; ++i) {
         if (strcmp(watcher->files_to_watch[i], filepath) == 0) {
             return;
@@ -55,6 +57,26 @@ static void add_watched_file(Watcher *watcher, const char *filepath) {
     watcher->file_count = new_count;
 
     printf("[Watcher info] Now watching new file: %s\n", filepath);
+}
+
+static int should_rescan_directories(Watcher *watcher) {
+    #ifdef _WIN32
+    ULONGLONG now = GetTickCount64();
+    if (now - watcher->last_dir_scan_time >= DIR_SCAN_INTERVAL_MS) {
+        watcher->last_dir_scan_time = now;
+        return 1;
+    }
+    #else
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long elapsed_ms = (now.tv_sec - watcher->last_dir_scan_time.tv_sec) * 1000 + 
+                      (now.tv_nsec - watcher->last_dir_scan_time.tv_nsec) / 1000000;
+    if (elapsed_ms >= DIR_SCAN_INTERVAL_MS) {
+        watcher->last_dir_scan_time = now;
+        return 1;
+    }
+    #endif
+    return 0;
 }
 
 static void rescan_directories(Watcher *watcher) {
@@ -110,16 +132,16 @@ static void rescan_directories(Watcher *watcher) {
 }
 
 int check_for_file_changes(Watcher *watcher) {
-    // Rescan directories for new files.
-    rescan_directories(watcher);
+    // Rescan directories for new files only periodically (every 1 second instead of every 100ms)
+    if (should_rescan_directories(watcher)) {
+        rescan_directories(watcher);
+    }
 
     for (int i = 0; i < watcher->file_count; ++i) {
         time_t current_mtime = get_mtime_asm(watcher->files_to_watch[i]);
         if (current_mtime != watcher->last_mtimes[i] && watcher->last_mtimes[i] != 0) {
             printf("[Watcher info] Change detected in %s! Restarting...\n", watcher->files_to_watch[i]);
-            for (int j = 0; j < watcher->file_count; ++j) {
-                watcher->last_mtimes[j] = get_mtime_asm(watcher->files_to_watch[j]);
-            }
+            watcher->last_mtimes[i] = current_mtime;
             return 1; // Change detected
         }
         // Handle deleted files

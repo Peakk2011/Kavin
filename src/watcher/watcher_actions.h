@@ -16,5 +16,6 @@ void handle_state_restarting(Watcher *watcher);
 
 // Helper
 void watcher_initiate_shutdown(Watcher *watcher);
+int check_for_file_changes(Watcher *watcher);
 
 #endif // WATCHER_ACTIONS_H

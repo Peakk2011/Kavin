@@ -34,6 +34,12 @@ void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_coun
     watcher->state = STATE_RESTARTING;
     watcher->restart_count = 0;
     watcher->last_mtimes = NULL;
+#ifdef _WIN32
+    watcher->last_dir_scan_time = 0;
+#else
+    watcher->last_dir_scan_time.tv_sec = 0;
+    watcher->last_dir_scan_time.tv_nsec = 0;
+#endif
 
     // Allocate space for file and directory pointers
     watcher->files_to_watch = malloc(sizeof(char*) * path_count);
