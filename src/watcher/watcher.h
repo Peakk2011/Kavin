@@ -42,6 +42,8 @@ typedef struct {
     struct timespec last_dir_scan_time;
 #endif
     unsigned long restart_count;
+    int consecutive_restart_failures; // Added for backoff mechanism
+    time_t last_restart_attempt_time; // Added for backoff mechanism
 } Watcher;
 
 void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_count);

@@ -24,6 +24,10 @@
 #include "../process/process.h"
 #include <arch/syscalls.h>
 
+// Constants for restart backoff
+static const int MAX_CONSECUTIVE_RESTART_FAILURES = 5;
+static const time_t RESTART_DELAY_SECONDS = 5; // 5 seconds delay between restart attempts after a failure
+
 static const unsigned int DIR_SCAN_INTERVAL_MS = 1000; // 1 second for directory rescans
 
 static void add_watched_file(Watcher *watcher, const char *filepath) {
@@ -180,12 +184,22 @@ void handle_state_running(Watcher *watcher) {
     if (watcher->process_id > 0 && process_check_status(watcher->process_id, &status) == watcher->process_id) {
         printf("[Watcher info] Process died unexpectedly\n");
         watcher->state = STATE_RESTARTING;
+        // The process died, so increment consecutive_restart_failures
+        watcher->consecutive_restart_failures++;
         return;
+    }
+
+    // If the process has been running successfully for a while, reset the consecutive failure count
+    if (watcher->process_id > 0 && watcher->consecutive_restart_failures > 0) {
+        // A simple heuristic: if it's running, and we had previous failures, assume it's stable now
+        watcher->consecutive_restart_failures = 0;
     }
 
     if (check_for_file_changes(watcher)) {
         watcher_initiate_shutdown(watcher);
         watcher->state = STATE_SHUTTING_DOWN;
+        // If file change initiated restart, reset failures count
+        watcher->consecutive_restart_failures = 0;
     }
 }
 
@@ -229,6 +243,41 @@ void handle_state_force_killing(Watcher *watcher) {
 }
 
 void handle_state_restarting(Watcher *watcher) {
+    time_t current_time = time(NULL);
+
+    // Retrieve the running_flag from the watcher's context if available, otherwise assume local control.
+    // In watcher_run, we pass &g_running. We need a way to access it here.
+    // A simpler approach is to have watcher->running directly control the loop in watcher_run.
+    // For now, let's assume watcher->running is observed by the main loop.
+    // If not, we need to pass a pointer to g_running through Watcher struct.
+    // For now, I will modify watcher_run to use watcher->running.
+
+    // This is a temporary fix. A more robust solution would be to pass the running_flag pointer to
+    // watcher_actions.h and then to handle_state_restarting.
+    // Given the current structure, watcher->running is the only accessible flag here.
+    // I will change watcher_run to use watcher->running to control its loop instead of *running_flag.
+
+    if (watcher->consecutive_restart_failures >= MAX_CONSECUTIVE_RESTART_FAILURES) {
+        fprintf(stderr, "[Watcher error] Process failed to start too many times consecutively. Aborting.\n");
+        watcher->running = 0; // Signal Kavin's main loop to exit.
+        return;
+    }
+
+    if (watcher->last_restart_attempt_time != 0 &&
+        current_time - watcher->last_restart_attempt_time < RESTART_DELAY_SECONDS) {
+        return;
+    }
+
+    watcher->last_restart_attempt_time = current_time;
+
     watcher_restart(watcher);
-    watcher->state = STATE_RUNNING;
+
+    if (watcher->process_id > 0) {
+        watcher->consecutive_restart_failures = 0;
+        watcher->state = STATE_RUNNING;
+    } else {
+        watcher->consecutive_restart_failures++;
+        fprintf(stderr, "[Watcher warning] Process failed to start. Attempt %d/%d. Retrying in %ld seconds...\n",
+                watcher->consecutive_restart_failures, MAX_CONSECUTIVE_RESTART_FAILURES, RESTART_DELAY_SECONDS);
+    }
 }

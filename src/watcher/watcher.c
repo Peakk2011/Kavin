@@ -33,6 +33,8 @@ void watcher_init(Watcher *watcher, const char *cmd, char **paths, int path_coun
     watcher->running = 1;
     watcher->state = STATE_RESTARTING;
     watcher->restart_count = 0;
+    watcher->consecutive_restart_failures = 0; // Initialize
+    watcher->last_restart_attempt_time = 0; // Initialize
     watcher->last_mtimes = NULL;
 #ifdef _WIN32
     watcher->last_dir_scan_time = 0;
@@ -85,7 +87,7 @@ void watcher_run(Watcher *watcher, volatile sig_atomic_t *running_flag) {
 
     printf("[Watcher info] Command: %s\n", watcher->cmd);
 
-    while (*running_flag) {
+    while (watcher->running && *running_flag) { // Modified loop condition
         switch (watcher->state) {
             case STATE_RUNNING:
                 handle_state_running(watcher);
@@ -104,13 +106,18 @@ void watcher_run(Watcher *watcher, volatile sig_atomic_t *running_flag) {
                 break;
         }
 
-        if (*running_flag) {
+        if (watcher->running && *running_flag) { // Use combined flag for delay
             #ifdef _WIN32
             Sleep(FILE_INTERVAL_MS);
             #else
             usleep(FILE_INTERVAL_MS * 1000);
             #endif
         }
+    }
+
+    // Propagate watcher->running state back to the main loop's flag
+    if (!watcher->running) {
+        *running_flag = 0;
     }
 
     if (watcher->process_id > 0) {
